@@ -9,7 +9,6 @@ import {
   CheckCircle, 
   ChevronRight, 
   ChevronLeft, 
-  ChevronDown,
   Scissors, 
   LogOut, 
   Check, 
@@ -24,7 +23,8 @@ import {
   CalendarDays,
   LayoutDashboard,
   Bell,
-  AlarmClock
+  AlarmClock,
+  Coffee
 } from 'lucide-react';
 
 // --- Tipos e Interfaces ---
@@ -101,8 +101,8 @@ const SERVICES: ServiceCategory[] = [
     isStartingPrice: true,
     requiresLength: true,
     options: [
-      { id: '6.1', name: 'Com formol', price: 'R$ 120', duration: '', durationMinutes: 240, isStartingPrice: true },
-      { id: '6.2', name: 'Sem formol', price: 'R$ 140', duration: '', durationMinutes: 240, isStartingPrice: true }
+      { id: '6.1', name: 'Com formol', price: 'R$ 120', duration: '4h', durationMinutes: 240, isStartingPrice: true },
+      { id: '6.2', name: 'Sem formol', price: 'R$ 140', duration: '4h', durationMinutes: 240, isStartingPrice: true }
     ]
   },
   { id: '7', name: 'Botox', displayPrice: 'a partir de R$ 120', displayDuration: '2h+', durationMinutes: 120, isStartingPrice: true },
@@ -114,8 +114,8 @@ const SERVICES: ServiceCategory[] = [
     isStartingPrice: true,
     requiresLength: true,
     options: [
-      { id: '8.1', name: 'Com formol', price: 'R$ 120', duration: '', durationMinutes: 240, isStartingPrice: true },
-      { id: '8.2', name: 'Sem formol', price: 'R$ 140', duration: '', durationMinutes: 240, isStartingPrice: true }
+      { id: '8.1', name: 'Com formol', price: 'R$ 120', duration: '4h', durationMinutes: 240, isStartingPrice: true },
+      { id: '8.2', name: 'Sem formol', price: 'R$ 140', duration: '4h', durationMinutes: 240, isStartingPrice: true }
     ]
   },
   { 
@@ -146,12 +146,24 @@ const SERVICES: ServiceCategory[] = [
   }
 ];
 
+const LUNCH_START = 660; // 11:00 em minutos
+const LUNCH_END = 780;   // 13:00 em minutos
+const CLOSING_TIME = 1080; // 18:00 em minutos
+
 const generateBusinessHours = () => {
   const hours = [];
   for (let h = 8; h <= 18; h++) {
     const hh = h.toString().padStart(2, '0');
-    hours.push(`${hh}:00`);
-    if (h < 18) hours.push(`${hh}:30`);
+    // Não permite iniciar atendimento no meio do almoço
+    const m00 = h * 60;
+    const m30 = h * 60 + 30;
+
+    if (m00 < LUNCH_START || m00 >= LUNCH_END) {
+        if (h < 18) hours.push(`${hh}:00`);
+    }
+    if (m30 < LUNCH_START || m30 >= LUNCH_END) {
+        if (h < 18) hours.push(`${hh}:30`);
+    }
   }
   return hours;
 };
@@ -280,7 +292,7 @@ function LandingPage({ navigate }: { navigate: (to: string) => void }) {
         </h1>
         
         <p className="text-2xl text-slate-500 mb-12 max-w-2xl leading-relaxed">
-          No {SALON_NAME}, Leci Medeiros oferece cuidado personalizado para realçar sua autoestima com excelência e carinho.
+          No {SALON_NAME}, oferecemos cuidado personalizado para realçar sua autoestima com excelência e carinho.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-6 w-full max-w-lg mb-20">
@@ -298,7 +310,7 @@ function LandingPage({ navigate }: { navigate: (to: string) => void }) {
               <MapPin size={32} />
             </div>
             <h3 className="text-2xl font-bold mb-2">Localização</h3>
-            <p className="text-lg text-slate-500">Rua Granada, 269 — Bethânia, Ipatinga. Fácil acesso e ambiente climatizado.</p>
+            <p className="text-lg text-slate-500">Rua Granada, 269 — Bethânia, Ipatinga. Fácil acesso e ambiente aconchegante.</p>
           </Card>
 
           <Card className="hover:-translate-y-2 transition-transform cursor-default group">
@@ -306,7 +318,7 @@ function LandingPage({ navigate }: { navigate: (to: string) => void }) {
               <Clock4 size={32} />
             </div>
             <h3 className="text-2xl font-bold mb-2">Atendimento</h3>
-            <p className="text-lg text-slate-500">Segunda a Sábado, das 08:00 às 18:00. Reserve seu horário com antecedência.</p>
+            <p className="text-lg text-slate-500">Terça a Sábado, das 08:00 às 18:00. Reserve seu horário com antecedência.</p>
           </Card>
 
           <Card className="hover:-translate-y-2 transition-transform cursor-default group">
@@ -314,7 +326,7 @@ function LandingPage({ navigate }: { navigate: (to: string) => void }) {
               <Scissors size={32} />
             </div>
             <h3 className="text-2xl font-bold mb-2">Expertise</h3>
-            <p className="text-lg text-slate-500">Corte, coloração, tratamentos capilares e estética facial com excelência.</p>
+            <p className="text-lg text-slate-500">Corte, coloração e tratamentos capilares com excelência.</p>
           </Card>
         </div>
       </div>
@@ -350,36 +362,51 @@ function BookingPage({ navigate, onComplete, appointments }: any) {
     for (let i = 0; i < 14; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() + i);
-      if (d.getDay() !== 0) dates.push(d.toISOString().split('T')[0]);
+      if (d.getDay() !== 0 && d.getDay() !== 1) dates.push(d.toISOString().split('T')[0]);
     }
     return dates;
   }, []);
 
-  const isOccupied = (date: string, time: string) => {
-    const requestedMinutes = timeToMinutes(time);
-    return appointments.some((a: Appointment) => {
+  const getServiceDuration = () => {
+    return selection.option?.durationMinutes || selection.category?.durationMinutes || 60;
+  };
+
+  const checkAvailability = (date: string, time: string) => {
+    const startMin = timeToMinutes(time);
+    const duration = getServiceDuration();
+    const endMin = startMin + duration;
+
+    // 1. Checar se ultrapassa o fechamento
+    if (endMin > CLOSING_TIME) return { available: false, reason: 'Ultrapassa o horário de fechamento (18:00)' };
+
+    // 2. Checar se invade o almoço (Inicia antes das 11 e termina após as 11)
+    if (startMin < LUNCH_START && endMin > LUNCH_START) return { available: false, reason: 'Conflita com horário de almoço (11h-13h)' };
+
+    // 3. Checar conflito com outros agendamentos
+    const conflict = appointments.find((a: Appointment) => {
       if (a.date !== date || a.status === 'cancelled') return false;
       const appStart = timeToMinutes(a.time);
-      const appDuration = a.durationMinutes;
-      const appEnd = appStart + appDuration;
+      const appEnd = appStart + a.durationMinutes;
       const blockedUntil = Math.ceil(appEnd / 30) * 30;
-      return requestedMinutes >= appStart && requestedMinutes < blockedUntil;
+      
+      return (startMin >= appStart && startMin < blockedUntil) || (endMin > appStart && endMin <= blockedUntil);
     });
+
+    if (conflict) return { available: false, reason: 'Horário já ocupado' };
+
+    return { available: true };
   };
 
   const handleFinish = () => {
-    const finalServiceName = selection.category?.name || '';
-    const finalSubName = selection.option?.name;
-    const finalDuration = selection.option?.durationMinutes || selection.category?.durationMinutes || 60;
     const app: Appointment = {
       id: Math.random().toString(36).substr(2, 9),
       serviceId: selection.category!.id,
-      serviceName: finalServiceName,
-      subOptionName: finalSubName,
+      serviceName: selection.category?.name || '',
+      subOptionName: selection.option?.name,
       hairLength: selection.length,
       date: selection.date,
       time: selection.time,
-      durationMinutes: finalDuration,
+      durationMinutes: getServiceDuration(),
       clientName: selection.name,
       clientPhone: selection.phone,
       status: 'pending',
@@ -405,7 +432,7 @@ function BookingPage({ navigate, onComplete, appointments }: any) {
         </div>
         <h2 className="text-5xl font-serif font-black text-indigo-950 mb-6">Solicitado!</h2>
         <p className="text-2xl text-slate-500 mb-10 leading-relaxed">
-          <strong>{selection.name}</strong>, seu agendamento para <strong>{selection.category?.name}{selection.option ? ` (${selection.option.name})` : ''}</strong> foi enviado para avaliação de <strong>Leci Medeiros</strong>.
+          <strong>{selection.name}</strong>, seu agendamento foi enviado para avaliação de <strong>Leci Medeiros</strong>.
         </p>
         <Card className="mb-6 text-left bg-indigo-50/30 border-indigo-100">
           <div className="flex flex-col gap-4">
@@ -419,10 +446,9 @@ function BookingPage({ navigate, onComplete, appointments }: any) {
             </div>
           </div>
         </Card>
-        <p className="text-lg text-slate-400 font-bold mb-10 italic">Se precisar reagendar ou cancelar, entre em contato com Leci pelo Whatsapp.</p>
         <div className="flex flex-col gap-4">
           <Button variant="whatsapp" className="py-6 text-2xl" onClick={() => window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=Olá%20Leci,%20sou%20${selection.name}.%20Agendei%20${selection.category?.name}%20pelo%20site.%20Pode%20confirmar?`, "_blank")}>
-            Avisar no WhatsApp
+            Confirmar no WhatsApp
           </Button>
           <Button variant="ghost" onClick={() => navigate('/')}>Voltar ao Início</Button>
         </div>
@@ -447,10 +473,6 @@ function BookingPage({ navigate, onComplete, appointments }: any) {
       {step === 1 && (
         <div className="animate-in slide-in-from-right-10 fade-in duration-500">
           <h2 className="text-5xl font-serif font-black text-indigo-950 mb-6">O que vamos fazer?</h2>
-          <div className="bg-indigo-50 border-2 border-indigo-100 rounded-3xl p-6 mb-12 flex gap-4">
-            <Info className="text-indigo-600 shrink-0" size={32} />
-            <p className="text-xl text-indigo-900 font-medium leading-relaxed">Preço pode variar conforme o volume do cabelo. Avaliamos na hora.</p>
-          </div>
           <div className="grid gap-6 mb-12">
             {SERVICES.map(cat => (
               <div key={cat.id}>
@@ -498,12 +520,24 @@ function BookingPage({ navigate, onComplete, appointments }: any) {
       {step === 3 && (
         <div className="animate-in slide-in-from-right-10 fade-in duration-500">
           <h2 className="text-5xl font-serif font-black text-indigo-950 mb-4">Escolha o horário</h2>
-          <p className="text-2xl text-slate-400 mb-12">Para o dia {formatDisplayDate(selection.date)} ({getDayName(selection.date)})</p>
+          <p className="text-2xl text-slate-400 mb-6">Para o dia {formatDisplayDate(selection.date)}</p>
+          
+          <div className="flex items-center gap-6 mb-8 p-4 bg-amber-50 rounded-2xl border border-amber-100">
+            <Coffee className="text-amber-600" size={32} />
+            <p className="text-lg text-amber-900 font-bold">Horário de almoço das 11:00 às 13:00</p>
+          </div>
+
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
             {BUSINESS_HOURS.map(time => {
-              const occupied = isOccupied(selection.date, time);
+              const { available, reason } = checkAvailability(selection.date, time);
               return (
-                <button key={time} disabled={occupied} onClick={() => setSelection({...selection, time})} className={`p-6 rounded-[2rem] border-4 text-2xl font-black transition-all shadow-xl ${occupied ? 'bg-slate-100 text-slate-300 border-slate-100 cursor-not-allowed' : selection.time === time ? 'bg-indigo-950 text-white border-indigo-950 scale-105' : 'bg-white border-white hover:border-indigo-100 text-indigo-950'}`}>
+                <button 
+                  key={time} 
+                  disabled={!available} 
+                  onClick={() => setSelection({...selection, time})} 
+                  title={reason}
+                  className={`relative p-6 rounded-[2rem] border-4 text-2xl font-black transition-all shadow-xl ${!available ? 'bg-slate-100 text-slate-300 border-slate-100 cursor-not-allowed' : selection.time === time ? 'bg-indigo-950 text-white border-indigo-950 scale-105' : 'bg-white border-white hover:border-indigo-100 text-indigo-950'}`}
+                >
                   {time}
                 </button>
               );
@@ -599,7 +633,6 @@ function AdminPanel({ appointments, onUpdate, onLogout }: any) {
           <div className="bg-slate-50 p-4 rounded-2xl min-w-[120px] text-center">
             <div className="text-4xl font-black text-indigo-950">{a.time}</div>
             <div className="text-sm font-bold text-slate-400">{formatDisplayDate(a.date)}</div>
-            {soon && <div className="mt-2 bg-rose-500 text-white text-[10px] font-black uppercase px-2 py-1 rounded-lg animate-pulse">CHEGANDO</div>}
           </div>
           <div className="space-y-1 md:text-left text-center">
             <h3 className="text-3xl font-serif font-black text-indigo-950">{a.clientName}</h3>
@@ -612,7 +645,6 @@ function AdminPanel({ appointments, onUpdate, onLogout }: any) {
           <button onClick={() => setEditing(a)} className="p-4 bg-indigo-50 text-indigo-950 rounded-2xl hover:bg-indigo-950 hover:text-white transition-all"><Edit2 size={24} /></button>
           <button onClick={() => sendReminder(a)} className="p-4 bg-amber-50 text-amber-600 rounded-2xl hover:bg-amber-600 hover:text-white transition-all" title="Lembrar Cliente"><Bell size={24} /></button>
           {a.status !== 'cancelled' && <button onClick={() => onUpdate({...a, status: 'cancelled'})} className="p-4 bg-rose-50 text-rose-500 rounded-2xl hover:bg-rose-500 hover:text-white transition-all"><X size={24} /></button>}
-          <Button variant="whatsapp" className="px-4 py-4 rounded-2xl" onClick={() => window.open(`https://wa.me/${a.clientPhone.replace(/\D/g, '')}`)}><MessageCircle size={24} /></Button>
         </div>
       </Card>
     );
